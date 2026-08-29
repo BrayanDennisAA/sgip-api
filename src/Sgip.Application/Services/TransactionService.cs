@@ -85,7 +85,6 @@ public class TransactionService : ITransactionService
         );
 
         await _transactionRepository.AddAsync(transaction);
-        await _transactionRepository.SaveChangesAsync();
 
         _logger.LogInformation("Transacción de desembolso creada con idempotency_key {IdempotencyKey} para el préstamo {LoanId}.", idempotencyKey, request.LoanId);
 

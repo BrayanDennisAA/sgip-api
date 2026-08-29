@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Sgip.Application.DTOs;
+using Sgip.Application.Interfaces;
 using Sgip.Application.Repositories.Interfaces;
 using Sgip.Application.Services.Interfaces;
 using Sgip.Domain.Entities;
@@ -15,7 +16,7 @@ public class LoanService : ILoanService
     private readonly ILoanRepository _loanRepository;
     private readonly ITransactionService _transactionService;
     private readonly IInstallmentStrategyFactory _installmentStrategyFactory;
-
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<LoanService> _logger;
 
     private const decimal MinAmount = 500m;
@@ -31,11 +32,13 @@ public class LoanService : ILoanService
         ILoanRepository loanRepository,
         ITransactionService transactionService,
         IInstallmentStrategyFactory installmentStrategyFactory,
+        IUnitOfWork unitOfWork,
         ILogger<LoanService> logger)
     {
         _loanRepository = loanRepository;
         _transactionService= transactionService;
         _installmentStrategyFactory = installmentStrategyFactory;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -98,18 +101,27 @@ public class LoanService : ILoanService
             loan.PaymentSchedules.Add(item);
         }
 
-        await _loanRepository.AddAsync(loan);
-        await _loanRepository.SaveChangesAsync();
-        _logger.LogInformation("Préstamo {LoanId} creado para {UserId} por {Amount}", loan.Id, loan.UserId, loan.Amount);
-
-
-        // Regla de aprobación automática (simular scoring):
-        // monto < 10,000 y cliente con menos de 2 préstamos activos => aprobado automáticamente
-        if (request.Amount < AutoApprovalAmountLimit && activeCount < AutoApprovalMaxActiveLoans)
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
-            await ApproveInternalAsync(loan);
-            _logger.LogInformation("Préstamo {LoanId} auto-aprobado (scoring simulado)", loan.Id);
-        }
+            await _loanRepository.AddAsync(loan);
+            if (request.Amount < AutoApprovalAmountLimit && activeCount < AutoApprovalMaxActiveLoans)
+            {
+                loan.Approve();
+                await _loanRepository.UpdateAsync(loan);
+
+                await _transactionService.CreateDisbursementTransactionAsync($"disbursement-{loan.Id}", new CreateTransactionRequest
+                {
+                    Type = TransactionType.Disbursement,
+                    Amount = loan.Amount,
+                    LoanId = loan.Id
+                });
+
+                _logger.LogInformation("Préstamo {LoanId} auto-aprobado (scoring simulado)", loan.Id);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+        });
 
         return MapLoanResponse(loan);
 
@@ -157,7 +169,21 @@ public class LoanService : ILoanService
         var loan = await _loanRepository.GetByIdAsync(id);
         if (loan == null) return null;
 
-        await ApproveInternalAsync(loan);
+        loan.Approve();
+        
+        await _unitOfWork.ExecuteInTransactionAsync(async () =>
+        {
+            await _loanRepository.UpdateAsync(loan);
+            await _transactionService.CreateDisbursementTransactionAsync($"disbursement-{loan.Id}", new CreateTransactionRequest
+            {
+                Type = TransactionType.Disbursement,
+                Amount = loan.Amount,
+                LoanId = loan.Id,
+                Description = $"Desembolso del préstamo {loan.Id}"
+            });
+
+            await _unitOfWork.SaveChangesAsync();
+        });
 
         _logger.LogInformation("Préstamo {LoanId} aprobado manualmente", loan.Id);
 
@@ -176,21 +202,6 @@ public class LoanService : ILoanService
         _logger.LogInformation("Préstamo {LoanId} rechazado manualmente", loan.Id);
 
         return MapLoanResponse(loan);
-    }
-
-    private async Task ApproveInternalAsync(Loan loan)
-    {
-        loan.Approve();
-        await _loanRepository.UpdateAsync(loan);
-
-        await _loanRepository.SaveChangesAsync();
-
-        await _transactionService.CreateDisbursementTransactionAsync($"disbursement-{loan.Id}", new CreateTransactionRequest
-        {
-            Type = TransactionType.Disbursement,
-            Amount = loan.Amount,
-            LoanId = loan.Id
-        });
     }
 
     private static void ValidateAmountAndTerm(decimal amount, int term)

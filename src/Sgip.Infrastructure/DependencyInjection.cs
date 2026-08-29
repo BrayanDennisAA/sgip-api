@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Sgip.Application.Interfaces;
 using Sgip.Application.Repositories.Interfaces;
 using Sgip.Infrastructure.Data;
 using Sgip.Infrastructure.Repositories;
@@ -13,8 +14,10 @@ public static class DependencyInjection
     {
         var connectionString = BuildConnectionString(configuration);
 
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure()));
 
         // --- Repositorios ---
         services.AddScoped<ILoanRepository, LoanRepository>();
