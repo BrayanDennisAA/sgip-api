@@ -107,7 +107,6 @@ public class LoanService : ILoanService
             if (request.Amount < AutoApprovalAmountLimit && activeCount < AutoApprovalMaxActiveLoans)
             {
                 loan.Approve();
-                await _loanRepository.UpdateAsync(loan);
 
                 await _transactionService.CreateDisbursementTransactionAsync($"disbursement-{loan.Id}", new CreateTransactionRequest
                 {

@@ -26,7 +26,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(l => l.LoanType).HasConversion<string>().HasMaxLength(20);
             entity.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(l => l.CreatedAt).HasColumnType("timestamp with time zone");
-            entity.Property(l => l.UpdatedAt).HasColumnType("timestamp without time zone");
+            entity.Property(l => l.UpdatedAt).HasColumnType("timestamp with time zone");
             entity.HasIndex(l => l.UserId);
 
             entity.HasMany(l => l.PaymentSchedules)
