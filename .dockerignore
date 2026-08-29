@@ -1,0 +1,13 @@
+**/.classpath
+**/.project
+**/.settings
+**/.toolstarget
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/.git
+**/.gitignore
+**/ClientApp/dist
+**/[Dd]ebug
+**/[Rr]elease

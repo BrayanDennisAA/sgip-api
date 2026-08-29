@@ -1,0 +1,65 @@
+using Microsoft.AspNetCore.Mvc;
+using Sgip.Application.DTOs;
+using Sgip.Application.Services.Interfaces;
+using Sgip.Domain;
+using Sgip.Domain.Enums;
+using Sgip.Domain.Exceptions;
+
+namespace Sgip.WebApi.Controllers;
+
+[ApiController]
+[Route("api/transactions")]
+public class TransactionsController : ControllerBase
+{
+    private readonly ITransactionService _transactionService;
+
+    public TransactionsController(ITransactionService transactionService)
+    {
+        _transactionService = transactionService;
+    }
+
+    /// <summary>
+    /// Crea una transacción. Si idempotency_key ya existe, retorna la transacción
+    /// original (200) en lugar de crear una nueva (201).
+    /// </summary>
+    [HttpPost]
+    [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Create([FromBody] CreateTransactionRequest request)
+    {
+        try
+        {
+            var result = await _transactionService.CreateAsync(request);
+            if (result.WasDeduplicated)
+                return Ok(result); // ya existía: no es una creación nueva
+
+            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Lista transacciones con filtros opcionales por tipo, estado o préstamo.</summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(List<TransactionResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] TransactionType? type,
+        [FromQuery] TransactionStatus? status,
+        [FromQuery] Guid? loanId)
+    {
+        var filter = new TransactionFilter { Type = type, Status = status, LoanId = loanId };
+        return Ok(await _transactionService.GetAllAsync(filter));
+    }
+
+    /// <summary>Obtiene una transacción por Id.</summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        var transaction = await _transactionService.GetByIdAsync(id);
+        return transaction == null ? NotFound() : Ok(transaction);
+    }
+}

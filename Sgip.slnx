@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sgip.Application/Sgip.Application.csproj" />
+    <Project Path="src/Sgip.Domain/Sgip.Domain.csproj" />
+    <Project Path="src/Sgip.Infrastructure/Sgip.Infrastructure.csproj" />
+    <Project Path="src/Sgip.WebApi/Sgip.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sgip.IntegrationTests/Sgip.IntegrationTests.csproj" />
+    <Project Path="tests/Sgip.UnitTests/Sgip.UnitTests.csproj" />
+  </Folder>
+</Solution>
