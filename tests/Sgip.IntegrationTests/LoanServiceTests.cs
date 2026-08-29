@@ -24,6 +24,7 @@ public class LoanServiceTests
         var loanRepo = new LoanRepository(context);
         var transactionService = new TransactionService(
             new TransactionRepository(context), NullLogger<TransactionService>.Instance);
+        var unitOfWork = new TestUnitOfWork(context);
 
         var strategyFactory = new InstallmentStrategyFactory(new IInstallmentStrategy[]
         {
@@ -36,8 +37,39 @@ public class LoanServiceTests
             loanRepo,
             transactionService,
             strategyFactory,
+            unitOfWork,
             NullLogger<LoanService>.Instance);
     }
+
+    [Fact]
+    public async Task ApproveAsync_CambiaEstadoAActiveYCreaTransaccionDeDesembolsoJuntos()
+    {
+        var service = CreateService(out var context);
+
+        var loan = await service.CreateAsync(new CreateLoanRequest
+        {
+            UserId = "user-approve-manual",
+            Amount = 15_000, // >= 10,000 -> no se auto-aprueba, queda Pending
+            Term = 24,
+            LoanType = LoanType.Fixed,
+            MonthlyIncome = 30_000
+        });
+
+        Assert.Equal("Pending", loan.Status);
+
+        var approved = await service.ApproveAsync(loan.Id);
+
+        Assert.NotNull(approved);
+        Assert.Equal("Approved", approved!.Status);
+
+        var disbursement = await context.Transactions
+            .FirstOrDefaultAsync(t => t.LoanId == loan.Id && t.Type == TransactionType.Disbursement);
+
+        Assert.NotNull(disbursement);
+        Assert.Equal(loan.Amount, disbursement!.Amount);
+    }
+
+    // Pruebas Unitarias para validar reglas de negocio. (TODO: mover a un archivo de pruebas unitarias)
 
     [Theory]
     [InlineData(499)]      // por debajo del mínimo ($500)
@@ -57,21 +89,21 @@ public class LoanServiceTests
         await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateAsync(request));
     }
 
-    [Fact]
-    public async Task CreateAsync_ConMontoBajoYPocosPrestamos_SeAprueboAutomaticamente()
+    [Theory]
+    [InlineData(5)]   // por debajo del mínimo (6 meses)
+    [InlineData(61)]  // por encima del máximo (60 meses)
+    public async Task CreateAsync_ConPlazoFueraDeRango_LanzaBusinessRuleException(int invalidTerm)
     {
         var service = CreateService(out _);
         var request = new CreateLoanRequest
         {
-            UserId = "user-auto-approve",
-            Amount = 5_000, // < 10,000
-            Term = 12,
+            UserId = "user-test",
+            Amount = 5_000,
+            Term = invalidTerm,
             LoanType = LoanType.Fixed,
-            MonthlyIncome = 20_000
+            MonthlyIncome = 10_000
         };
 
-        var loan = await service.CreateAsync(request);
-
-        Assert.Equal("Approved", loan.Status);
+        await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateAsync(request));
     }
 }
