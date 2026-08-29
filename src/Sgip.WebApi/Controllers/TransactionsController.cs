@@ -25,20 +25,19 @@ public class TransactionsController : ControllerBase
     [HttpPost]
     [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> Create([FromBody] CreateTransactionRequest request)
+    public async Task<IActionResult> Create(
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        [FromBody] CreateTransactionRequest request)
     {
-        try
-        {
-            var result = await _transactionService.CreateAsync(request);
-            if (result.WasDeduplicated)
-                return Ok(result); // ya existía: no es una creación nueva
+        if (string.IsNullOrWhiteSpace(idempotencyKey)) if (string.IsNullOrWhiteSpace(idempotencyKey))
+            return BadRequest(new { error = "El header 'Idempotency-Key' es requerido." });
 
-            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
-        }
-        catch (BusinessRuleException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var result = await _transactionService.CreateAsync(idempotencyKey, request);
+        if (result.WasDeduplicated)
+            return Ok(result); // ya existía: no es una creación nueva
+
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+
     }
 
     /// <summary>Lista transacciones con filtros opcionales por tipo, estado o préstamo.</summary>

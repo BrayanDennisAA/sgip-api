@@ -185,9 +185,8 @@ public class LoanService : ILoanService
 
         await _loanRepository.SaveChangesAsync();
 
-        await _transactionService.CreateDisbursementTransactionAsync(new CreateTransactionRequest
+        await _transactionService.CreateDisbursementTransactionAsync($"disbursement-{loan.Id}", new CreateTransactionRequest
         {
-            IdempotencyKey = $"disbursement-{loan.Id}",
             Type = TransactionType.Disbursement,
             Amount = loan.Amount,
             LoanId = loan.Id

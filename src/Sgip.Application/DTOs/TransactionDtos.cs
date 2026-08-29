@@ -6,9 +6,6 @@ namespace Sgip.Application.DTOs;
 
 public class CreateTransactionRequest
 {
-    // TODO: quitar debe venir del header de la petición, no del body. Se recibe explícitamente para no requerir autenticación/perfil (ver README).
-    public string IdempotencyKey { get; set; } = string.Empty;
-
     public TransactionType Type { get; set; }
 
     public decimal Amount { get; set; }

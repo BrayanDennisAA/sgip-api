@@ -20,23 +20,23 @@ public class TransactionService : ITransactionService
         _logger = logger;
     }
 
-    public async Task<TransactionResponse> CreateAsync(CreateTransactionRequest request)
+    public async Task<TransactionResponse> CreateAsync(string idempotencyKey, CreateTransactionRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
             throw new BusinessRuleException("idempotency_key es requerido.");
 
         // 1) Si ya existe una transacción con esta clave, se retorna la original
         //    (nunca se crea una nueva ni se reprocesa).
-        var existing = await _transactionRepository.GetByIdempotencyKeyAsync(request.IdempotencyKey);
+        var existing = await _transactionRepository.GetByIdempotencyKeyAsync(idempotencyKey);
         if (existing != null)
         {
-            _logger.LogInformation("Transacción con idempotency_key {IdempotencyKey} ya existe. Retornando la transacción existente.", request.IdempotencyKey);
+            _logger.LogInformation("Transacción con idempotency_key {IdempotencyKey} ya existe. Retornando la transacción existente.", idempotencyKey);
             return MapResponse(existing, wasDeduplicated: true);
         }
 
         var transaction = new Transaction
         (
-            request.IdempotencyKey,
+            idempotencyKey,
             request.Type,
             request.Amount,
             request.LoanId
@@ -61,14 +61,14 @@ public class TransactionService : ITransactionService
         return transaction == null ? null : MapResponse(transaction, wasDeduplicated: false);
     }
 
-    public async Task<TransactionResponse> CreateDisbursementTransactionAsync(CreateTransactionRequest request)
+    public async Task<TransactionResponse> CreateDisbursementTransactionAsync(string idempotencyKey, CreateTransactionRequest request)
     {
-        if (string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
             throw new BusinessRuleException("idempotency_key es requerido.");
 
         // 1) Si ya existe una transacción con esta clave, se retorna la original
         //    (nunca se crea una nueva ni se reprocesa).
-        var existing = await _transactionRepository.GetByIdempotencyKeyAsync(request.IdempotencyKey);
+        var existing = await _transactionRepository.GetByIdempotencyKeyAsync(idempotencyKey);
         if (existing != null)
         {
             return MapResponse(existing, wasDeduplicated: true);
@@ -76,7 +76,7 @@ public class TransactionService : ITransactionService
 
         var transaction = new Transaction
         (
-            request.IdempotencyKey,
+            idempotencyKey,
             request.Type,
             request.Amount,
             TransactionStatus.Completed,
@@ -87,7 +87,7 @@ public class TransactionService : ITransactionService
         await _transactionRepository.AddAsync(transaction);
         await _transactionRepository.SaveChangesAsync();
 
-        _logger.LogInformation("Transacción de desembolso creada con idempotency_key {IdempotencyKey} para el préstamo {LoanId}.", request.IdempotencyKey, request.LoanId);
+        _logger.LogInformation("Transacción de desembolso creada con idempotency_key {IdempotencyKey} para el préstamo {LoanId}.", idempotencyKey, request.LoanId);
 
         return MapResponse(transaction, wasDeduplicated: false);
     }
