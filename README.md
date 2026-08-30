@@ -128,6 +128,28 @@ dotnet test
 ```bash
 docker-compose up --build
 ```
+
+## Endpoints Disponibles
+
+### Loans
+
+| Método | Endpoint |
+|----------|----------|
+| POST | /api/loans/simulate |
+| POST | /api/loans |
+| GET | /api/loans |
+| GET | /api/loans/{id} |
+| GET | /api/loans/{id}/schedule |
+| PATCH | /api/loans/{id}/approve |
+| PATCH | /api/loans/{id}/reject |
+
+### Transactions
+
+| Método | Endpoint |
+|----------|----------|
+| POST | /api/transactions |
+| GET | /api/transactions |
+| GET | /api/transactions/{id} |
 ---
 
 ## Estructura del proyecto
@@ -210,6 +232,7 @@ Se priorizó la correcta implementación de los cálculos financieros, validacio
 - No se implementó autenticación.
 - No se implementaron notificaciones.
 - No se implementó cache distribuido.
+- No se implementó paginación en los endpoints de listado.
 
 ## Mejoras Futuras
 
