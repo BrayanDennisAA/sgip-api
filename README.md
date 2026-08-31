@@ -9,23 +9,25 @@ procesamiento de transacciones con garantías de idempotencia, flujo de aprobaci
 
 - Simulación de préstamos utilizando Sistema Francés y Sistema Alemán.
 - Generación automática de cronograma de pagos.
-- Solicitud de préstamos.
-- Consulta de préstamos por identificador.
-- Listado de préstamos.
+- Solicitud de préstamos, con aprobación automática simulando scoring (monto < $10,000 y menos de 2 préstamos activos).
+- Flujo de aprobación/rechazo manual para el resto de los casos.
+- Consulta de préstamos por identificador y listado con filtro por usuario..
 
 ### Gestión de Transacciones
 
-- Registro de transacciones.
-- Garantía de idempotencia mediante IdempotencyKey.
-- Prevención de transacciones duplicadas.
-- Consulta y listado de transacciones.
+- Registro de transacciones con garantía de idempotencia mediante el
+  header `Idempotency-Key`.
+- Prevención de transacciones duplicadas a nivel de aplicación (chequeo
+  previo) y a nivel de base de datos (índice único).
+- Consulta y listado de transacciones con filtros por tipo y estado.
 
 ### Reglas de Negocio
 
 - Validación de monto mínimo y máximo.
 - Validación de plazo permitido.
 - Validación de máximo de préstamos activos por cliente.
-- Validación de capacidad de pago.
+- Validación de capacidad de pago (cuota total ≤ 40% de ingresos
+  declarados).
 
 ---
 
@@ -33,8 +35,8 @@ procesamiento de transacciones con garantías de idempotencia, flujo de aprobaci
 
 | Link | URl |
 |------|-----|
-| Swagger |  |
-| Api |  |
+| Swagger | [https://sgip-api-production-6ecd.up.railway.app/swagger/index.html](https://sgip-api-production-6ecd.up.railway.app/swagger/index.html) |
+| Api | [https://sgip-api-production-6ecd.up.railway.app/api](https://sgip-api-production-6ecd.up.railway.app/api)|
 
 ## Links Locales (Desarrollo)
 
@@ -128,6 +130,9 @@ dotnet test
 ```bash
 docker-compose up --build
 ```
+Las migraciones y el seed data se aplican automáticamente al arrancar el
+contenedor de la API — no hace falta correr `dotnet ef database update` a
+mano en este flujo.
 
 ## Endpoints Disponibles
 
@@ -156,29 +161,33 @@ docker-compose up --build
 
 ```
 src/
-├── Sgip.Application/          # Capa de aplicación con servicios, DTOs y validaciones
-├── Sgip.Domain/               # Capa de dominio con entidades y lógica de negocio
-├── Sgip.Infrastructure/       # Capa de infraestructura con repositorios y contexto de base de datos
-├── Sgip.WebApi/               # Capa de presentación con controladores y configuración de la API
-
+├── Sgip.Application/          # Servicios de aplicación, DTOs, validadores FluentValidation
+├── Sgip.Domain/                # Entidades, enums, estrategias de cálculo (Strategy), excepciones de negocio
+├── Sgip.Infrastructure/        # Repositorios, DbContext, Unit of Work, seed data
+├── Sgip.WebApi/                # Controladores, Program.cs, configuración de la API
+ 
 tests/
-├── Sgip.IntegrationTests/      # Pruebas de integración
-├── Sgip.UnitTests/             # Pruebas unitarias
+├── Sgip.UnitTests/             # Cálculo financiero, estrategias, validadores, reglas de negocio
+├── Sgip.IntegrationTests/      # idempotencia
 ```
 ---
 ## Arquitectura
 
-Se ha implementado una arquitectura basada en capas, siguiendo los principios de DDD (Domain-Driven Design) no estrictamente, pero con una separación clara de responsabilidades entre las capas de aplicación, dominio e infraestructura. Esto permite una mayor flexibilidad y mantenibilidad del código, así como una mejor organización de los componentes del sistema.
-
-Se separaron en las siguientes capas:
-
-- **Capa de Aplicación**: Contiene los servicios de aplicación, DTOs y validaciones. Esta capa se encarga de orquestar la lógica de negocio y coordinar las operaciones entre las diferentes capas.
-
-- **Capa de Dominio**: Contiene las entidades del dominio y la lógica de negocio. Esta capa representa el núcleo del sistema y encapsula las reglas de negocio y comportamientos específicos del dominio.
-
-- **Capa de Infraestructura**: Contiene los repositorios y el contexto de base de datos. Esta capa se encarga de la persistencia de datos y la interacción con la base de datos PostgreSQL.
-
-- **Capa de Presentación**: Contiene los controladores y la configuración de la API. Esta capa expone los endpoints RESTful y maneja las solicitudes y respuestas HTTP.
+Arquitectura en capas inspirada en DDD, sin aplicarlo de forma estricta:
+separación clara entre Dominio, Aplicación, Infraestructura y presentación
+(WebApi), con las dependencias apuntando siempre hacia adentro (WebApi →
+Infrastructure/Application → Domain; Domain no conoce a nadie).
+ 
+- **Dominio**: entidades, enums, y las estrategias de cálculo de cuota
+  (`IInstallmentStrategy` + implementaciones Fixed/Decreasing). Sin
+  dependencias externas.
+- **Aplicación**: servicios que orquestan casos de uso, DTOs, validadores
+  de FluentValidation, interfaces de repositorio y de Unit of Work.
+- **Infraestructura**: implementación de repositorios, `DbContext`,
+  `UnitOfWork`, seed data.
+- **WebApi**: controladores, middleware de manejo de excepciones,
+  configuración de Swagger/DI (composition root — el único punto que
+  conoce todas las implementaciones concretas).
 
 ### Patrones de diseño utilizados
 
@@ -197,18 +206,15 @@ Se separaron en las siguientes capas:
 ---
 ## Decisiones de diseño
 
-Al diseñar la arquitectura del sistema, se tomaron varias decisiones clave para garantizar la escalabilidad, mantenibilidad y robustez del sistema:
-
-
-- **Uso de patrones de diseño**: Se implementaron varios patrones de diseño, como Repository, Unit of Work, Strategy, Factory e Idempotency, para abordar problemas comunes en el desarrollo de software y mejorar la calidad del código.
-
-- **Uso de DTOs y validaciones**: Se utilizaron DTOs para transferir datos entre las capas del sistema y se implementaron validaciones utilizando FluentValidation para garantizar la integridad de los datos.
-
-- **Uso de Entity Framework Core**: Se eligió Entity Framework Core como ORM para facilitar la interacción con la base de datos PostgreSQL, aprovechando sus características de mapeo objeto-relacional y soporte para migraciones.
-
-- **Uso de PostgreSQL**: Se eligió PostgreSQL como base de datos por su robustez, escalabilidad y soporte para características avanzadas como transacciones y concurrencia.
-
-- **Uso de Docker y Docker Compose**: Se decidió utilizar Docker y Docker Compose para facilitar el despliegue y la gestión del entorno de desarrollo, permitiendo la creación de contenedores aislados para la aplicación y la base de datos.
+- **DTOs + FluentValidation** para separar validación de forma (rangos,
+  campos requeridos) de las reglas de negocio que dependen del estado de
+  la base de datos (máximo de préstamos activos, capacidad de pago), que
+  viven en los servicios de aplicación y lanzan `BusinessRuleException`.
+- **PostgreSQL** por transacciones y constraints reales, que es lo que
+  sostiene la garantía de idempotencia ante condiciones de carrera.
+- **Entity Framework Core**: Se eligió Entity Framework Core como 
+  ORM para facilitar la interacción con la base de datos PostgreSQL, aprovechando sus características de mapeo objeto-relacional y soporte para migraciones.
+- **Docker Compose** como bonus para desarrollo local.
 
 ### Trade-offs
 
@@ -226,13 +232,32 @@ Se implementó una estrategia de idempotencia respaldada por restricciones únic
 #### Funcionalidad vs Calidad
 Se priorizó la correcta implementación de los cálculos financieros, validaciones y pruebas automatizadas antes que incorporar funcionalidades complementarias como notificaciones, cache distribuido o procesamiento asíncrono.
 
+---
+## Testing
+
+### Unit tests
+- Cálculo de cuota fija (sistema francés).
+- Generación de cronograma de pagos, incluyendo el caso de fecha de pago
+  cuando el día base no existe en el mes destino (ej. día 31 → día 30).
+- Validación de monto mínimo y máximo.
+- Validación de plazo.
+
+### Integration tests
+- Deduplicación de transacciones con el mismo `idempotency_key`
+  (incluyendo el caso de key vacía y el de keys distintas creando
+  transacciones separadas).
+- Persistencia de préstamos con su cronograma relacionado.
+- Flujo de aprobación: transición de estado + creación de transacción de
+  desembolso, verificando que ambas queden persistidas juntas.
 
 ## Limitaciones
 
 - No se implementó autenticación.
-- No se implementaron notificaciones.
 - No se implementó cache distribuido.
 - No se implementó paginación en los endpoints de listado.
+- No hay test automatizado de la atomicidad transaccional ante fallos
+  reales
+- Los límites de negocio están duplicados con el frontend
 
 ## Mejoras Futuras
 
@@ -241,26 +266,18 @@ Se priorizó la correcta implementación de los cálculos financieros, validacio
 - Event Driven Architecture.
 - Redis.
 - Modular Monolith.
+- Paginación en listados.
+- Testcontainers para testear atomicidad transaccional real.
 
 ## Simplificaciones Realizadas
 
 Para priorizar la entrega de una solución funcional y desplegada se realizaron las siguientes simplificaciones:
 
-- Se utilizó un UserId fijo en lugar de implementar autenticación.
-- No se implementaron transferencias entre cuentas.
-- Se utilizó una simulación para obtener la tasa de interés.
-- No se implementó procesamiento asíncrono de eventos.
-
----
-Pruebas implementadas:
-
-- Cálculo de cuota fija.
-- Generación de número de cuotas.
-- Validación de monto mínimo.
-- Validación de monto máximo.
-- Validación de plazo.
-- Validación de idempotencia.
-- Creación de préstamos.
+- `userId` fijo en lugar de autenticación.
+- No se implementaron transferencias entre cuentas 
+- TEA simulada por rango de monto, no calculada por un motor de scoring
+  real.
+- Sin procesamiento asíncrono de eventos.
 
 ---
 
