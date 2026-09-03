@@ -55,7 +55,7 @@ public class Loan
     public void Approve()
     {
         if (Status != LoanStatus.Pending)
-            throw new BusinessRuleException("Solo se pueden aprobar préstamos que estén en estado pendiente.");
+            throw new ConflictException("Solo se pueden aprobar préstamos que estén en estado pendiente.");
 
         Status = LoanStatus.Approved;
         UpdatedAt = DateTime.UtcNow;
@@ -64,7 +64,7 @@ public class Loan
     public void Reject()
     {
         if (Status != LoanStatus.Pending)
-            throw new BusinessRuleException("Solo se pueden rechazar préstamos que estén en estado pendiente.");
+            throw new ConflictException("Solo se pueden rechazar préstamos que estén en estado pendiente.");
 
         Status = LoanStatus.Rejected;
         UpdatedAt = DateTime.UtcNow;

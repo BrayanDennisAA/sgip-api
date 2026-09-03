@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Sgip.Domain.Exceptions;
 
@@ -23,72 +22,40 @@ public sealed class ExceptionHandlingMiddleware
         {
             await _next(context);
         }
-        catch (BusinessRuleException ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Business rule violation: {Message}",
-                ex.Message);
-
-            await WriteProblemDetails(
-                context,
-                StatusCodes.Status400BadRequest,
-                "Business Rule Violation",
-                ex.Message);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Resource not found");
-
-            await WriteProblemDetails(
-                context,
-                StatusCodes.Status404NotFound,
-                "Resource Not Found",
-                ex.Message);
-        }
         catch (Exception ex)
         {
-            _logger.LogError(
-                ex,
-                "Unhandled exception processing {Method} {Path}",
-                context.Request.Method,
-                context.Request.Path);
+            var (statusCode, title) = ex switch
+            {
+                ConflictException => (StatusCodes.Status409Conflict, "Conflicto de estado"),
+                BusinessRuleException => (StatusCodes.Status422UnprocessableEntity, "Regla de negocio violada"),
+                _ => (StatusCodes.Status500InternalServerError, "Error interno"),
+            };
 
-            await WriteProblemDetails(
-                context,
-                StatusCodes.Status500InternalServerError,
-                "Internal Server Error",
-                "An unexpected error occurred.");
+
+            if (statusCode == StatusCodes.Status500InternalServerError)
+            {
+                _logger.LogError(ex, "Error no controlado en {Method} {Path}",
+                    context.Request.Method, context.Request.Path);
+            }
+            else
+            {
+                _logger.LogWarning("{Title}: {Message} ({Method} {Path})",
+                    title, ex.Message, context.Request.Method, context.Request.Path);
+            }
+
+            context.Response.StatusCode = statusCode;
+            context.Response.ContentType = "application/problem+json";
+
+            var problem = new ProblemDetails
+            {
+                Status = statusCode,
+                Title = title,
+                Detail = ex.Message,
+                Instance = context.Request.Path,
+            };
+            problem.Extensions["traceId"] = context.TraceIdentifier;
+
+            await context.Response.WriteAsJsonAsync(problem);
         }
-    }
-
-    private static async Task WriteProblemDetails(
-        HttpContext context,
-        int statusCode,
-        string title,
-        string detail)
-    {
-        if (context.Response.HasStarted)
-            return;
-
-        context.Response.Clear();
-
-        context.Response.StatusCode = statusCode;
-        context.Response.ContentType = "application/problem+json";
-
-        var problemDetails = new ProblemDetails
-        {
-            Status = statusCode,
-            Title = title,
-            Detail = detail,
-            Instance = context.Request.Path
-        };
-
-        problemDetails.Extensions["traceId"] =
-            context.TraceIdentifier;
-
-        await context.Response.WriteAsJsonAsync(problemDetails);
     }
 }

@@ -66,15 +66,8 @@ public class LoansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Approve(Guid id)
     {
-        try
-        {
-            var loan = await _loanService.ApproveAsync(id);
-            return loan == null ? NotFound() : Ok(loan);
-        }
-        catch (BusinessRuleException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var loan = await _loanService.ApproveAsync(id);
+        return loan == null ? NotFound() : Ok(loan);
     }
 
     /// <summary>Rechaza un préstamo Pending.</summary>
@@ -83,14 +76,7 @@ public class LoansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Reject(Guid id)
     {
-        try
-        {
-            var loan = await _loanService.RejectAsync(id);
-            return loan == null ? NotFound() : Ok(loan);
-        }
-        catch (BusinessRuleException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
+        var loan = await _loanService.RejectAsync(id);
+        return loan == null ? NotFound() : Ok(loan);
     }
 }
