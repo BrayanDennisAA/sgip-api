@@ -155,6 +155,44 @@ mano en este flujo.
 | POST | /api/transactions |
 | GET | /api/transactions |
 | GET | /api/transactions/{id} |
+
+## Manejo de errores
+
+La API responde errores en formato [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807)
+(`application/problem+json`), de forma consistente sin importar el origen
+del error:
+
+| Código | Cuándo | Origen |
+|---|---|---|
+| `400` | JSON malformado, tipo de dato incorrecto, campo requerido faltante en el body | Binding de ASP.NET Core (`InvalidModelStateResponseFactory`) |
+| `400` | Falla una regla de FluentValidation (rango de monto, plazo, etc.) | Validación en el controller antes de llamar al servicio |
+| `404` | El recurso solicitado no existe | `Result<T>` con `ErrorType.NotFound` |
+| `409` | El recurso existe pero no está en el estado correcto (ej. aprobar un préstamo que ya no está `Pending`) | `Result<T>` con `ErrorType.Conflict` |
+| `422` | Se violó una regla de negocio evaluable de antemano (monto fuera de rango a nivel de dominio, máximo de préstamos activos, capacidad de pago) | `Result<T>` con `ErrorType.Validation` |
+| `500` | Error no anticipado (infraestructura, bug) | Excepción real, capturada por `ExceptionHandlingMiddleware` |
+
+Ejemplo de respuesta (`409`):
+```json
+{
+  "status": 409,
+  "title": "Conflicto de estado",
+  "detail": "Solo se pueden aprobar préstamos en estado Pending. Estado actual: Approved.",
+  "instance": "/api/loans/3fa85f64-.../approve",
+  "code": "conflict",
+  "traceId": "00-fd24f5a7..."
+}
+```
+
+### Por qué `Result<T>` en vez de excepciones para el flujo de negocio
+
+- **`Result<T>`** para todo fallo que el propio servicio puede anticipar
+  antes de que pase — cero costo de excepción, y el tipo de error
+  (`ErrorType.Validation/Conflict/NotFound`) viaja como dato, no como
+  jerarquía de excepciones que el caller tiene que interpretar con `catch`.
+- **Excepciones**, solo para lo que de verdad no se puede anticipar (falla
+  de conexión a la base de datos, condición de carrera detectada por EF
+  Core) — ahí sí se paga el costo, porque es infrecuente por diseño y el
+  stack trace real importa para diagnosticar.
 ---
 
 ## Estructura del proyecto
@@ -203,6 +241,13 @@ Infrastructure/Application → Domain; Domain no conoce a nadie).
 
 - **Idempotency Pattern**: Se utiliza para garantizar que las operaciones de transacción sean idempotentes, evitando la duplicación de transacciones en caso de reintentos o fallos en la comunicación.
 
+- **Result Pattern** — los servicios de aplicación (`LoanService`,
+  `TransactionService`) devuelven `Result<T>` en vez de lanzar excepciones
+  para los fallos esperables del negocio (validación, conflicto de estado,
+  recurso no encontrado). Las excepciones quedan reservadas exclusivamente
+  para lo genuinamente inesperado (fallas de infraestructura), que sigue
+  cubriendo `ExceptionHandlingMiddleware` como red de seguridad.
+
 ---
 ## Decisiones de diseño
 
@@ -215,6 +260,7 @@ Infrastructure/Application → Domain; Domain no conoce a nadie).
 - **Entity Framework Core**: Se eligió Entity Framework Core como 
   ORM para facilitar la interacción con la base de datos PostgreSQL, aprovechando sus características de mapeo objeto-relacional y soporte para migraciones.
 - **Docker Compose** como bonus para desarrollo local.
+- **`Result<T>` sobre excepciones para el flujo de negocio esperable**
 
 ### Trade-offs
 
