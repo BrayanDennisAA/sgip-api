@@ -3,6 +3,7 @@ using Sgip.Application.DTOs;
 using Sgip.Application.Repositories.Interfaces;
 using Sgip.Application.Services.Interfaces;
 using Sgip.Domain;
+using Sgip.Domain.Common;
 using Sgip.Domain.Entities;
 using Sgip.Domain.Exceptions;
 
@@ -20,10 +21,10 @@ public class TransactionService : ITransactionService
         _logger = logger;
     }
 
-    public async Task<TransactionResponse> CreateAsync(string idempotencyKey, CreateTransactionRequest request)
+    public async Task<Result<TransactionResponse>> CreateAsync(string idempotencyKey, CreateTransactionRequest request)
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey))
-            throw new BusinessRuleException("idempotency_key es requerido.");
+            return Error.Validation("idempotency_key es requerido.");
 
         // 1) Si ya existe una transacción con esta clave, se retorna la original
         //    (nunca se crea una nueva ni se reprocesa).
@@ -31,7 +32,7 @@ public class TransactionService : ITransactionService
         if (existing != null)
         {
             _logger.LogInformation("Transacción con idempotency_key {IdempotencyKey} ya existe. Retornando la transacción existente.", idempotencyKey);
-            return MapResponse(existing, wasDeduplicated: true);
+            return Result<TransactionResponse>.Success(MapResponse(existing, wasDeduplicated: true));
         }
 
         var transaction = new Transaction
@@ -44,9 +45,9 @@ public class TransactionService : ITransactionService
 
         await _transactionRepository.AddAsync(transaction);
         await _transactionRepository.SaveChangesAsync();
-        
 
-        return MapResponse(transaction, wasDeduplicated: false);
+
+        return Result<TransactionResponse>.Success(MapResponse(transaction, wasDeduplicated: false));
     }
 
     public async Task<List<TransactionResponse>> GetAllAsync(TransactionFilter? filter)
@@ -55,10 +56,11 @@ public class TransactionService : ITransactionService
         return transactions.Select(t => MapResponse(t, wasDeduplicated: false)).ToList();
     }
 
-    public async Task<TransactionResponse?> GetByIdAsync(Guid id)
+    public async Task<Result<TransactionResponse>> GetByIdAsync(Guid id)
     {
         var transaction = await _transactionRepository.GetByIdAsync(id);
-        return transaction == null ? null : MapResponse(transaction, wasDeduplicated: false);
+        return transaction == null ? Error.NotFound($"Transacción '{id}' no encontrada.") 
+        : Result<TransactionResponse>.Success(MapResponse(transaction, wasDeduplicated: false));
     }
 
     public async Task<TransactionResponse> CreateDisbursementTransactionAsync(string idempotencyKey, CreateTransactionRequest request)

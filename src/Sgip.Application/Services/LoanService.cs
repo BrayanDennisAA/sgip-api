@@ -3,9 +3,9 @@ using Sgip.Application.DTOs;
 using Sgip.Application.Interfaces;
 using Sgip.Application.Repositories.Interfaces;
 using Sgip.Application.Services.Interfaces;
+using Sgip.Domain.Common;
 using Sgip.Domain.Entities;
 using Sgip.Domain.Enums;
-using Sgip.Domain.Exceptions;
 using Sgip.Domain.Strategies;
 using Sgip.Domain.Utils;
 
@@ -36,21 +36,25 @@ public class LoanService : ILoanService
         ILogger<LoanService> logger)
     {
         _loanRepository = loanRepository;
-        _transactionService= transactionService;
+        _transactionService = transactionService;
         _installmentStrategyFactory = installmentStrategyFactory;
         _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
-    public SimulateLoanResponse Simulate(SimulateLoanRequest request)
+    public Result<SimulateLoanResponse> Simulate(SimulateLoanRequest request)
     {
-        ValidateAmountAndTerm(request.Amount, request.Term);
+        var validation = ValidateAmountAndTerm(request.Amount, request.Term);
+        if (validation.IsFailure)
+        {
+            return validation.Error!;
+        }
 
         var strategy = _installmentStrategyFactory.GetStrategy(request.LoanType);
         var tea = FinancialCalculator.GetBaseTeaForAmount(request.Amount);
         var schedule = strategy.GenerateSchedule(request.Amount, tea, request.Term, DateTime.UtcNow.Date);
 
-        return new SimulateLoanResponse
+        return Result<SimulateLoanResponse>.Success(new SimulateLoanResponse
         {
             Amount = request.Amount,
             Term = request.Term,
@@ -59,17 +63,18 @@ public class LoanService : ILoanService
             LoanType = request.LoanType.ToString(),
             MonthlyPayment = schedule.First().TotalPayment,
             Schedule = schedule.Select(MapScheduleItem).ToList()
-        };
+        });
     }
 
-    public async Task<LoanResponse> CreateAsync(CreateLoanRequest request)
+    public async Task<Result<LoanResponse>> CreateAsync(CreateLoanRequest request)
     {
-        ValidateAmountAndTerm(request.Amount, request.Term);
+        var validation = ValidateAmountAndTerm(request.Amount, request.Term);
+        if (validation.IsFailure) return validation.Error!;
 
         // Regla: máximo 3 préstamos activos (pending/approved/active) por cliente
         var activeCount = await _loanRepository.CountActiveLoansAsync(request.UserId);
         if (activeCount >= MaxActiveLoans)
-            throw new BusinessRuleException(
+            return Error.Validation(
                 $"El cliente ya tiene {activeCount} préstamos activos. Máximo permitido: {MaxActiveLoans}.");
 
         var tea = FinancialCalculator.GetBaseTeaForAmount(request.Amount);
@@ -83,8 +88,8 @@ public class LoanService : ILoanService
         var projectedDebt = currentMonthlyDebt + monthlyPayment;
         if (request.MonthlyIncome > 0 && projectedDebt > request.MonthlyIncome * MaxDebtToIncomeRatio)
         {
-            throw new BusinessRuleException(
-                "La cuota mensual proyectada excede el 40% de los ingresos declarados del cliente.");
+            return Error.Validation(
+                 "La cuota mensual proyectada excede el 40% de los ingresos declarados del cliente.");
         }
 
         var loan = new Loan(
@@ -122,7 +127,7 @@ public class LoanService : ILoanService
 
         });
 
-        return MapLoanResponse(loan);
+        return Result<LoanResponse>.Success(MapLoanResponse(loan));
 
     }
 
@@ -132,19 +137,21 @@ public class LoanService : ILoanService
         return loans.Select(MapLoanResponse).ToList();
     }
 
-    public async Task<LoanResponse?> GetByIdAsync(Guid id)
+    public async Task<Result<LoanResponse>> GetByIdAsync(Guid id)
     {
         var loan = await _loanRepository.GetByIdAsync(id);
-        return loan == null ? null : MapLoanResponse(loan);
+        return loan == null
+        ? Error.NotFound($"Préstamo '{id}' no encontrado.")
+        : Result<LoanResponse>.Success(MapLoanResponse(loan));
     }
 
-    public async Task<LoanDetailResponse?> GetScheduleAsync(Guid id)
+    public async Task<Result<LoanDetailResponse>> GetScheduleAsync(Guid id)
     {
         var loan = await _loanRepository.GetByIdWithScheduleAsync(id);
-        if (loan == null) return null;
+        if (loan == null) return Error.NotFound($"Préstamo '{id}' no encontrado.");
 
         var response = MapLoanResponse(loan);
-        return new LoanDetailResponse
+        return Result<LoanDetailResponse>.Success(new LoanDetailResponse
         {
             Id = response.Id,
             UserId = response.UserId,
@@ -160,16 +167,17 @@ public class LoanService : ILoanService
                 .OrderBy(p => p.PaymentNumber)
                 .Select(MapScheduleItem)
                 .ToList()
-        };
+        });
     }
 
-    public async Task<LoanResponse?> ApproveAsync(Guid id)
+    public async Task<Result<LoanResponse>> ApproveAsync(Guid id)
     {
         var loan = await _loanRepository.GetByIdAsync(id);
-        if (loan == null) return null;
+        if (loan == null) return Error.NotFound($"Préstamo '{id}' no encontrado.");
 
-        loan.Approve();
-        
+        var validation = loan.Approve();
+        if (validation.IsFailure) return validation.Error!;
+
         await _unitOfWork.ExecuteInTransactionAsync(async () =>
         {
             await _loanRepository.UpdateAsync(loan);
@@ -186,13 +194,13 @@ public class LoanService : ILoanService
 
         _logger.LogInformation("Préstamo {LoanId} aprobado manualmente", loan.Id);
 
-        return MapLoanResponse(loan);
+        return Result<LoanResponse>.Success(MapLoanResponse(loan));
     }
 
-    public async Task<LoanResponse?> RejectAsync(Guid id)
+    public async Task<Result<LoanResponse>> RejectAsync(Guid id)
     {
         var loan = await _loanRepository.GetByIdAsync(id);
-        if (loan == null) return null;
+        if (loan == null) return Error.NotFound($"Préstamo '{id}' no encontrado.");
 
         loan.Reject();
         await _loanRepository.UpdateAsync(loan);
@@ -200,17 +208,18 @@ public class LoanService : ILoanService
 
         _logger.LogInformation("Préstamo {LoanId} rechazado manualmente", loan.Id);
 
-        return MapLoanResponse(loan);
+        return Result<LoanResponse>.Success(MapLoanResponse(loan));
     }
 
-    private static void ValidateAmountAndTerm(decimal amount, int term)
+    private static Result ValidateAmountAndTerm(decimal amount, int term)
     {
         //TODO: Obtener los valores de MinAmount, MaxAmount, MinTerm y MaxTerm desde parámetros.
         if (amount < MinAmount || amount > MaxAmount)
-            throw new BusinessRuleException($"El monto debe estar entre {MinAmount:C} y {MaxAmount:C}.");
+            return Result.Failure(Error.Validation($"El monto debe estar entre {MinAmount:C} y {MaxAmount:C}."));
 
         if (term < MinTerm || term > MaxTerm)
-            throw new BusinessRuleException($"El plazo debe estar entre {MinTerm} y {MaxTerm} meses.");
+            return Result.Failure(Error.Validation($"El plazo debe estar entre {MinTerm} y {MaxTerm} meses."));
+        return Result.Success();
     }
 
     private static PaymentScheduleItemDto MapScheduleItem(PaymentSchedule p) => new()

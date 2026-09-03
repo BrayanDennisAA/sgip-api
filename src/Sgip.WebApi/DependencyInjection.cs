@@ -5,6 +5,7 @@ using Sgip.Application.Services;
 using Sgip.Application.Services.Interfaces;
 using Sgip.Domain.Strategies;
 using Sgip.Infrastructure;
+using Sgip.WebApi.Extensions;
 using Sgip.WebApi.Validations;
 
 namespace Sgip.WebApi;
@@ -30,7 +31,10 @@ public static class DependencyInjection
         services.AddControllers(options =>
         {
             options.Filters.Add<ValidationFilter>();
-        });
+        })
+        .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()))
+        .ConfigureInvalidModelStateResponse();
+        
         services.AddValidatorsFromAssemblyContaining<Program>();
 
         services.AddEndpointsApiExplorer();
@@ -55,6 +59,8 @@ public static class DependencyInjection
             options.AddPolicy("AllowFrontend", policy =>
                 policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
         });
+
+        services.AddHttpContextAccessor();
 
         return services;
     }

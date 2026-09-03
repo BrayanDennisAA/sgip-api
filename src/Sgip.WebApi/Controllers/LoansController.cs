@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Sgip.Application.DTOs;
 using Sgip.Application.Services.Interfaces;
 using Sgip.Domain.Exceptions;
+using Sgip.WebApi.Common;
 
 namespace Sgip.WebApi.Controllers;
 
@@ -21,8 +22,7 @@ public class LoansController : ControllerBase
     [ProducesResponseType(typeof(SimulateLoanResponse), StatusCodes.Status200OK)]
     public IActionResult Simulate([FromBody] SimulateLoanRequest request)
     {
-        var simulationResult = _loanService.Simulate(request);
-        return Ok(simulationResult);
+       return _loanService.Simulate(request).ToActionResult();
     }
 
     // <summary>Crea una solicitud de préstamo (queda en Pending o se auto-aprueba).</summary>
@@ -30,8 +30,8 @@ public class LoansController : ControllerBase
     [ProducesResponseType(typeof(LoanResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateLoanRequest request)
     {
-        var loan = await _loanService.CreateAsync(request);
-        return CreatedAtAction(nameof(GetById), new { id = loan.Id }, loan);
+        var result = await _loanService.CreateAsync(request);
+        return result.ToActionResult(loan => CreatedAtAction(nameof(GetById), new { id = loan.Id }, loan));
     }
 
     /// <summary>Lista préstamos, opcionalmente filtrados por userId.</summary>
@@ -46,8 +46,7 @@ public class LoansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var loan = await _loanService.GetByIdAsync(id);
-        return loan == null ? NotFound() : Ok(loan);
+        return (await _loanService.GetByIdAsync(id)).ToActionResult();
     }
 
     /// <summary>Obtiene el cronograma completo de pagos de un préstamo.</summary>
@@ -56,8 +55,7 @@ public class LoansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSchedule(Guid id)
     {
-        var loan = await _loanService.GetScheduleAsync(id);
-        return loan == null ? NotFound() : Ok(loan);
+        return (await _loanService.GetScheduleAsync(id)).ToActionResult();
     }
 
     /// <summary>Aprueba un préstamo Pending, lo pasa a Active y crea la transacción de desembolso.</summary>
@@ -66,8 +64,7 @@ public class LoansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Approve(Guid id)
     {
-        var loan = await _loanService.ApproveAsync(id);
-        return loan == null ? NotFound() : Ok(loan);
+        return (await _loanService.ApproveAsync(id)).ToActionResult();
     }
 
     /// <summary>Rechaza un préstamo Pending.</summary>
@@ -76,7 +73,6 @@ public class LoansController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Reject(Guid id)
     {
-        var loan = await _loanService.RejectAsync(id);
-        return loan == null ? NotFound() : Ok(loan);
+        return (await _loanService.RejectAsync(id)).ToActionResult();
     }
 }

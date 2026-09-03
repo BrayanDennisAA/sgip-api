@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sgip.Application.DTOs;
 using Sgip.Application.Services;
+using Sgip.Domain.Common;
 using Sgip.Domain.Enums;
 using Sgip.Domain.Exceptions;
 using Sgip.Infrastructure.Data;
@@ -40,9 +41,11 @@ public class IdempotencyTests
         var second = await service.CreateAsync(idempotencyKey, request);
 
         // Debe ser la MISMA transacción (mismo Id), no una nueva
-        Assert.Equal(first.Id, second.Id);
-        Assert.False(first.WasDeduplicated);
-        Assert.True(second.WasDeduplicated);
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.Equal(first.Value!.Id, second.Value!.Id); // misma transacción, no una nueva
+        Assert.False(first.Value.WasDeduplicated);
+        Assert.True(second.Value.WasDeduplicated);
 
         // Y en la base de datos solo debe existir un único registro
         var count = await context.Transactions.CountAsync(t => t.IdempotencyKey == idempotencyKey);
@@ -55,8 +58,10 @@ public class IdempotencyTests
         var service = CreateService(out _);
         var request = new CreateTransactionRequest { Type = TransactionType.Payment, Amount = 100m };
 
-        await Assert.ThrowsAsync<BusinessRuleException>(
-            () => service.CreateAsync(string.Empty, request));
+        var result = await service.CreateAsync(string.Empty, request);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ErrorType.Validation, result.Error!.Type);
     }
 
     [Fact]
@@ -68,7 +73,9 @@ public class IdempotencyTests
         var first = await service.CreateAsync("key-1", request);
         var second = await service.CreateAsync("key-2", request);
 
-        Assert.NotEqual(first.Id, second.Id);
+        Assert.True(first.IsSuccess);
+        Assert.True(second.IsSuccess);
+        Assert.NotEqual(first.Value!.Id, second.Value!.Id);
         Assert.Equal(2, await context.Transactions.CountAsync());
     }
 }

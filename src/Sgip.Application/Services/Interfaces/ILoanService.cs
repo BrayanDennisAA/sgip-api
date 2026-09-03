@@ -1,14 +1,15 @@
 using Sgip.Application.DTOs;
+using Sgip.Domain.Common;
 
 namespace Sgip.Application.Services.Interfaces;
 
 public interface ILoanService
 {
-    SimulateLoanResponse Simulate(SimulateLoanRequest request);
-    Task<LoanResponse> CreateAsync(CreateLoanRequest request);
+    Result<SimulateLoanResponse> Simulate(SimulateLoanRequest request);
+    Task<Result<LoanResponse>> CreateAsync(CreateLoanRequest request);
     Task<List<LoanResponse>> GetAllAsync(string? userId);
-    Task<LoanResponse?> GetByIdAsync(Guid id);
-    Task<LoanDetailResponse?> GetScheduleAsync(Guid id);
-    Task<LoanResponse?> ApproveAsync(Guid id);
-    Task<LoanResponse?> RejectAsync(Guid id);
+    Task<Result<LoanResponse>> GetByIdAsync(Guid id);
+    Task<Result<LoanDetailResponse>> GetScheduleAsync(Guid id);
+    Task<Result<LoanResponse>> ApproveAsync(Guid id);
+    Task<Result<LoanResponse>> RejectAsync(Guid id);
 }

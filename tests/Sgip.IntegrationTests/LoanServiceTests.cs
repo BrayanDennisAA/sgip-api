@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sgip.Application.DTOs;
 using Sgip.Application.Services;
+using Sgip.Domain.Common;
 using Sgip.Domain.Enums;
 using Sgip.Domain.Exceptions;
 using Sgip.Domain.Strategies;
@@ -55,18 +56,18 @@ public class LoanServiceTests
             MonthlyIncome = 30_000
         });
 
-        Assert.Equal("Pending", loan.Status);
+        Assert.Equal("Pending", loan.Value!.Status);
 
-        var approved = await service.ApproveAsync(loan.Id);
+        var approved = await service.ApproveAsync(loan.Value.Id);
 
         Assert.NotNull(approved);
-        Assert.Equal("Approved", approved!.Status);
+        Assert.Equal("Approved", approved.Value!.Status);
 
         var disbursement = await context.Transactions
-            .FirstOrDefaultAsync(t => t.LoanId == loan.Id && t.Type == TransactionType.Disbursement);
+            .FirstOrDefaultAsync(t => t.LoanId == loan.Value.Id && t.Type == TransactionType.Disbursement);
 
         Assert.NotNull(disbursement);
-        Assert.Equal(loan.Amount, disbursement!.Amount);
+        Assert.Equal(loan.Value.Amount, disbursement!.Amount);
     }
 
     // Pruebas Unitarias para validar reglas de negocio. (TODO: mover a un archivo de pruebas unitarias)
@@ -86,7 +87,10 @@ public class LoanServiceTests
             MonthlyIncome = 10_000
         };
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateAsync(request));
+        var result = await service.CreateAsync(request);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ErrorType.Validation, result.Error!.Type);
     }
 
     [Theory]
@@ -104,6 +108,9 @@ public class LoanServiceTests
             MonthlyIncome = 10_000
         };
 
-        await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateAsync(request));
+        var result = await service.CreateAsync(request);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(ErrorType.Validation, result.Error!.Type);
     }
 }

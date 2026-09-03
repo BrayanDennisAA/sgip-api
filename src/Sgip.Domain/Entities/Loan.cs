@@ -1,3 +1,4 @@
+using Sgip.Domain.Common;
 using Sgip.Domain.Enums;
 using Sgip.Domain.Exceptions;
 
@@ -52,21 +53,25 @@ public class Loan
         UpdatedAt = null;
     }
 
-    public void Approve()
+    public Result Approve()
     {
         if (Status != LoanStatus.Pending)
-            throw new ConflictException("Solo se pueden aprobar préstamos que estén en estado pendiente.");
+            return Result.Failure(Error.Conflict("Solo se pueden aprobar préstamos que estén en estado pendiente."));
 
         Status = LoanStatus.Approved;
         UpdatedAt = DateTime.UtcNow;
+
+        return Result.Success();
     }
 
-    public void Reject()
+    public Result Reject()
     {
         if (Status != LoanStatus.Pending)
-            throw new ConflictException("Solo se pueden rechazar préstamos que estén en estado pendiente.");
+            Result.Failure(Error.Conflict("Solo se pueden rechazar préstamos que estén en estado pendiente."));
 
         Status = LoanStatus.Rejected;
         UpdatedAt = DateTime.UtcNow;
+
+        return Result.Success();
     }
 }

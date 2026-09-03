@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Sgip.Domain.Exceptions;
+using Sgip.WebApi.Common;
 
 namespace Sgip.WebApi.Middleware;
 
@@ -31,30 +32,15 @@ public sealed class ExceptionHandlingMiddleware
                 _ => (StatusCodes.Status500InternalServerError, "Error interno"),
             };
 
-
             if (statusCode == StatusCodes.Status500InternalServerError)
-            {
-                _logger.LogError(ex, "Error no controlado en {Method} {Path}",
-                    context.Request.Method, context.Request.Path);
-            }
+                _logger.LogError(ex, "Error no controlado en {Method} {Path}", context.Request.Method, context.Request.Path);
             else
-            {
-                _logger.LogWarning("{Title}: {Message} ({Method} {Path})",
-                    title, ex.Message, context.Request.Method, context.Request.Path);
-            }
+                _logger.LogWarning("{Title}: {Message} ({Method} {Path})", title, ex.Message, context.Request.Method, context.Request.Path);
+
+            var problem = ApiProblemDetailsFactory.Build(statusCode, title, detail: ex.Message);
 
             context.Response.StatusCode = statusCode;
             context.Response.ContentType = "application/problem+json";
-
-            var problem = new ProblemDetails
-            {
-                Status = statusCode,
-                Title = title,
-                Detail = ex.Message,
-                Instance = context.Request.Path,
-            };
-            problem.Extensions["traceId"] = context.TraceIdentifier;
-
             await context.Response.WriteAsJsonAsync(problem);
         }
     }

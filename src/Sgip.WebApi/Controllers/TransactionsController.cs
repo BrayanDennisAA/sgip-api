@@ -4,6 +4,7 @@ using Sgip.Application.Services.Interfaces;
 using Sgip.Domain;
 using Sgip.Domain.Enums;
 using Sgip.Domain.Exceptions;
+using Sgip.WebApi.Common;
 
 namespace Sgip.WebApi.Controllers;
 
@@ -29,14 +30,18 @@ public class TransactionsController : ControllerBase
         [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
         [FromBody] CreateTransactionRequest request)
     {
-        if (string.IsNullOrWhiteSpace(idempotencyKey)) if (string.IsNullOrWhiteSpace(idempotencyKey))
-            return BadRequest(new { error = "El header 'Idempotency-Key' es requerido." });
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            return Problem(
+                statusCode: StatusCodes.Status422UnprocessableEntity,
+                title: "Regla de negocio violada",
+                detail: "El header 'Idempotency-Key' es requerido.");
 
         var result = await _transactionService.CreateAsync(idempotencyKey, request);
-        if (result.WasDeduplicated)
-            return Ok(result); // ya existía: no es una creación nueva
 
-        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
+        return result.ToActionResult(tx =>
+           tx.WasDeduplicated
+               ? Ok(tx)                                                 // ya existía
+               : CreatedAtAction(nameof(GetById), new { id = tx.Id }, tx)); // nueva
 
     }
 
@@ -58,7 +63,6 @@ public class TransactionsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var transaction = await _transactionService.GetByIdAsync(id);
-        return transaction == null ? NotFound() : Ok(transaction);
+        return (await _transactionService.GetByIdAsync(id)).ToActionResult();
     }
 }
